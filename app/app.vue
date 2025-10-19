@@ -8,6 +8,17 @@ useSeoMeta({
   title: 'SnapWifi - Instant WiFi QR Code Generator',
   description: 'Generate secure QR codes for your WiFi network in seconds. Share your WiFi password instantly - no typing required. Fast, free, and privacy-focused.'
 })
+
+useHead({
+  link: [
+    {
+      rel: 'icon',
+      type: 'image/svg+xml',
+      href: '/wifi.svg'
+    }
+  ]
+})
+
 // Initialize color mode
 const colorMode = useColorMode({
   storageKey: 'snapwifi-color-mode',
