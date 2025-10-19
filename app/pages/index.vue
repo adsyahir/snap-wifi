@@ -76,25 +76,37 @@
 
             <!-- QR Code Display -->
             <div v-if="qrCodeData" ref="qrCardRef">
-            <Card>
-              <CardHeader>
-                <CardTitle>{{ isSharedView ? 'WiFi QR Code' : 'Your WiFi QR Code' }}</CardTitle>
-                <CardDescription>
-                  <span v-if="isSharedView">
-                    Scan this code with your phone to connect to <strong>{{ form.ssid }}</strong>
-                  </span>
-                  <span v-else>
-                    Scan this code to connect to <strong>{{ form.ssid }}</strong>
-                  </span>
-                </CardDescription>
-              </CardHeader>
-              <CardContent class="flex flex-col items-center space-y-4">
-                <div class="bg-white p-6 rounded-lg">
-                  <img :src="qrCode" alt="QR Code" />
-                </div>
+              <Card>
+                <CardHeader>
+                  <CardTitle>{{ isSharedView ? 'WiFi QR Code' : 'Your WiFi QR Code' }}</CardTitle>
+                  <CardDescription>
+                    <span v-if="isSharedView">
+                      Scan this code with your phone to connect to <strong>{{ form.ssid }}</strong>
+                    </span>
+                    <span v-else>
+                      Scan this code to connect to <strong>{{ form.ssid }}</strong>
+                    </span>
+                  </CardDescription>
+                </CardHeader>
+                <CardContent class="flex flex-col items-center space-y-4">
+                  <div class="bg-white p-6 rounded-lg">
+                    <img :src="qrCode" alt="QR Code" />
+                  </div>
 
-                <div v-if="!isSharedView" class="flex gap-2 w-full">
-                  <div class="flex gap-2 flex-1">
+                  <div v-if="!isSharedView" class="flex gap-2 w-full">
+                    <div class="flex gap-2 flex-1">
+                      <Button @click="downloadQRCode('png')" variant="outline" class="flex-1">
+                        <Download class="mr-2 h-4 w-4" />
+                        PNG
+                      </Button>
+                      <Button @click="downloadQRCode('jpg')" variant="outline" class="flex-1">
+                        <Download class="mr-2 h-4 w-4" />
+                        JPG
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div v-if="isSharedView" class="flex gap-2 w-full">
                     <Button @click="downloadQRCode('png')" variant="outline" class="flex-1">
                       <Download class="mr-2 h-4 w-4" />
                       PNG
@@ -104,30 +116,28 @@
                       JPG
                     </Button>
                   </div>
-                </div>
 
-                <div v-if="isSharedView" class="flex gap-2 w-full">
-                  <Button @click="downloadQRCode('png')" variant="outline" class="flex-1">
-                    <Download class="mr-2 h-4 w-4" />
-                    PNG
-                  </Button>
-                  <Button @click="downloadQRCode('jpg')" variant="outline" class="flex-1">
-                    <Download class="mr-2 h-4 w-4" />
-                    JPG
-                  </Button>
-                </div>
-
-                <p v-if="linkCopied" class="text-sm text-muted-foreground">
-                  Link copied to clipboard!
-                </p>
-              </CardContent>
-            </Card>
+                  <p v-if="linkCopied" class="text-sm text-muted-foreground">
+                    Link copied to clipboard!
+                  </p>
+                </CardContent>
+              </Card>
             </div>
 
             <!-- Saved Networks -->
             <Card v-if="!isSharedView && savedNetworks.length > 0">
               <CardHeader>
-                <CardTitle>Saved Networks</CardTitle>
+                <div class="flex flex-col gap-2">
+                  <CardTitle>Saved Networks</CardTitle>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipContent side="bottom" class="max-w-xs">
+                        <p class="text-sm">Your networks are stored locally on your device only. They never leave your
+                          browser and are completely secure.</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
                 <CardDescription>
                   Previously generated QR codes
                 </CardDescription>
@@ -167,13 +177,12 @@
 
 <script lang="ts" setup>
 import { ref, computed, onMounted } from 'vue'
-import { useColorMode} from '@vueuse/core'
+import { useColorMode } from '@vueuse/core'
 import {
   Moon,
   Sun,
   Download,
   Share2,
-  Trash2,
   Eye,
   EyeOff,
   Loader2
@@ -187,6 +196,7 @@ import { z } from 'zod'
 import { useQRCode } from '@vueuse/integrations/useQRCode'
 import { encryptData, decryptData } from '~/lib/crypto'
 import Footer from '~/components/Footer.vue'
+import { Info, Trash2 } from 'lucide-vue-next'
 
 // Theme management
 const colorMode = useColorMode({
@@ -272,10 +282,10 @@ const qrCode = useQRCode(qrCodeData, { width: 300 })
 
 const validateForm = (): boolean => {
   errors.value = {}
-  
+
   // Use .value to access the ref
   const result = wifiSchema.safeParse(form.value)
-  
+
   if (!result.success) {
     result.error.errors.forEach((err) => {
       const field = err.path[0] as string
@@ -283,7 +293,7 @@ const validateForm = (): boolean => {
     })
     return false
   }
-  
+
   return true
 }
 
