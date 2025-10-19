@@ -104,10 +104,6 @@
                       JPG
                     </Button>
                   </div>
-                  <Button @click="copyShareLink" variant="outline" class="flex-1">
-                    <Share2 class="mr-2 h-4 w-4" />
-                    Share
-                  </Button>
                 </div>
 
                 <div v-if="isSharedView" class="flex gap-2 w-full">
