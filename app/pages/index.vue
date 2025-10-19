@@ -192,11 +192,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/com
 import { Input } from '~/components/ui/input'
 import { Label } from '~/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
-import { z } from 'zod'
 import { useQRCode } from '@vueuse/integrations/useQRCode'
 import { encryptData, decryptData } from '~/lib/crypto'
 import Footer from '~/components/Footer.vue'
 import { Info, Trash2 } from 'lucide-vue-next'
+import z from 'zod';
 
 // Theme management
 const colorMode = useColorMode({
@@ -240,11 +240,10 @@ interface StoredNetwork {
 
 const wifiSchema = z.object({
   ssid: z.string()
-    .min(1, 'SSID is required'),
+    .min(1, { message: 'Network name is required' }),
   password: z.string()
     .optional()
     .or(z.literal('')),
-
   encryption: z.enum(['WPA', 'WEP', 'nopass'])
 }).refine((data) => {
   if (data.encryption !== 'nopass' && !data.password) {
@@ -280,22 +279,6 @@ const qrCodeData = ref('')
 // QR code generated from qrCodeData
 const qrCode = useQRCode(qrCodeData, { width: 300 })
 
-const validateForm = (): boolean => {
-  errors.value = {}
-
-  // Use .value to access the ref
-  const result = wifiSchema.safeParse(form.value)
-
-  if (!result.success) {
-    result.error.errors.forEach((err) => {
-      const field = err.path[0] as string
-      errors.value[field] = err.message
-    })
-    return false
-  }
-
-  return true
-}
 
 const linkCopied = ref(false)
 const savedNetworks = ref<StoredNetwork[]>([])
@@ -318,9 +301,28 @@ onMounted(() => {
 const generateQRCode = () => {
   try {
     isGenerating.value = true
+    // Validate form using wifiSchema
+    const result = wifiSchema.safeParse(form.value)
+    
+    if (!result.success) {
+      // Clear previous errors
+      errors.value = {}
+      
+      // Set new errors from validation - use result.error.issues
+      result.error.issues.forEach((issue) => {
+        const field = issue.path[0] as string
+        errors.value[field] = issue.message
+      })
+      
+      isGenerating.value = false
+      return
+    }
+
+    // Clear errors on success
+    errors.value = {}
 
     // Validate form
-    if (!validateForm()) {
+    if (!wifiSchema) {
       isGenerating.value = false
       return
     }
