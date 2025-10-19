@@ -367,11 +367,24 @@ const generateQRCode = () => {
 }
 
 
-const downloadQRCode = (format: 'png' | 'jpg' = 'png') => {
+
+const isMobileDevice = () => {
+  // Check for mobile/tablet devices
+  const userAgent = navigator.userAgent.toLowerCase()
+  const isMobile = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile|tablet/i.test(userAgent)
+  const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0
+  
+  // Exclude desktop devices
+  const isDesktop = /windows nt|macintosh|linux x86_64/i.test(userAgent) && !isTouch
+  
+  return isMobile || (isTouch && !isDesktop)
+}
+
+const downloadQRCode = async (format: 'png' | 'jpg' = 'png') => {
   if (!qrCode.value) return
 
   const img = new Image()
-  img.onload = () => {
+  img.onload = async () => {
     // Create canvas with extra space for text
     const canvas = document.createElement('canvas')
     const padding = 60
@@ -410,15 +423,39 @@ const downloadQRCode = (format: 'png' | 'jpg' = 'png') => {
     // Draw the QR code
     ctx.drawImage(img, padding, padding + textHeight)
 
-    // Convert and download
-    canvas.toBlob((blob) => {
+    // Convert to blob
+    canvas.toBlob(async (blob) => {
       if (!blob) return
+
+      // Only use share API on mobile devices
+      if (isMobileDevice() && navigator.share && navigator.canShare) {
+        try {
+          const file = new File([blob], `wifi-qr-${form.value.ssid || 'code'}.${format}`, {
+            type: format === 'jpg' ? 'image/jpeg' : 'image/png'
+          })
+
+          if (navigator.canShare({ files: [file] })) {
+            await navigator.share({
+              files: [file],
+              title: 'WiFi QR Code',
+              text: `QR Code for ${form.value.ssid}`
+            })
+            return
+          }
+        } catch (err) {
+          console.log('Share failed, falling back to download')
+        }
+      }
+
+      // Fallback: traditional download for desktop or if share fails
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
       link.download = `wifi-qr-${form.value.ssid || 'code'}.${format}`
       link.click()
-      URL.revokeObjectURL(url)
+      
+      // Clean up
+      setTimeout(() => URL.revokeObjectURL(url), 100)
     }, format === 'jpg' ? 'image/jpeg' : 'image/png', 0.95)
   }
   img.src = qrCode.value
