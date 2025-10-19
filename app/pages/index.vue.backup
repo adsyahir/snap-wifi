@@ -1,0 +1,684 @@
+<template>
+  <div class="min-h-screen bg-background">
+    <!-- Header -->
+    <header class="border-b">
+      <div class="container mx-auto px-4 py-4">
+        <div class="flex items-center justify-between">
+          <h1 class="text-2xl font-semibold tracking-tight">SnapWiFi</h1>
+          <Button
+            variant="ghost"
+            size="icon"
+            @click="toggleTheme"
+            class="rounded-full"
+          >
+            <ClientOnly>
+              <Sun v-if="isDark" class="h-5 w-5" />
+              <Moon v-else class="h-5 w-5" />
+              <template #fallback>
+                <div class="h-5 w-5 rounded-full border-2 border-current"></div>
+              </template>
+            </ClientOnly>
+          </Button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container mx-auto px-4 py-8 max-w-4xl">
+      <Tabs v-model="activeTab" class="w-full">
+        <TabsList class="grid w-full grid-cols-1 mb-8">
+          <TabsTrigger value="qr">WiFi QR Code</TabsTrigger>
+        </TabsList>
+
+        <!-- QR Code Tab -->
+        <TabsContent value="qr">
+          <div class="grid gap-6">
+            <!-- WiFi Credentials Form -->
+            <Card v-if="!isSharedView">
+              <CardHeader>
+                <CardTitle>WiFi Credentials</CardTitle>
+                <CardDescription>
+                  Enter your WiFi details to generate a QR code
+                </CardDescription>
+              </CardHeader>
+              <CardContent class="space-y-4">
+                <div class="space-y-2">
+                  <Label for="ssid">Network Name (SSID)</Label>
+                  <Input
+                    id="ssid"
+                    v-model="wifiCredentials.ssid"
+                    placeholder="MyWiFiNetwork"
+                  />
+                </div>
+
+                <div class="space-y-2">
+                  <Label for="password">Password</Label>
+                  <div class="relative">
+                    <Input
+                      id="password"
+                      v-model="wifiCredentials.password"
+                      :type="showPassword ? 'text' : 'password'"
+                      placeholder="Enter password"
+                      class="pr-10"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      class="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                      @click="showPassword = !showPassword"
+                    >
+                      <Eye v-if="!showPassword" class="h-4 w-4 text-muted-foreground" />
+                      <EyeOff v-else class="h-4 w-4 text-muted-foreground" />
+                    </Button>
+                  </div>
+                </div>
+
+                <div class="space-y-2">
+                  <Label for="encryption">Security Type</Label>
+                  <select
+                    id="encryption"
+                    v-model="wifiCredentials.encryption"
+                    class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 cursor-pointer"
+                  >
+                    <option value="WPA">WPA/WPA2</option>
+                    <option value="WEP">WEP</option>
+                    <option value="nopass">None</option>
+                  </select>
+                </div>
+
+                <div class="space-y-2">
+                  <Label for="expiry">QR Code Expiry</Label>
+                  <select
+                    id="expiry"
+                    v-model="qrExpiryHours"
+                    class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 cursor-pointer"
+                  >
+                    <option :value="1">1 Hour</option>
+                    <option :value="6">6 Hours</option>
+                    <option :value="12">12 Hours</option>
+                    <option :value="24">24 Hours</option>
+                    <option :value="72">3 Days</option>
+                    <option :value="168">1 Week</option>
+                    <option :value="0">Never Expires</option>
+                  </select>
+                </div>
+
+                <Button @click="generateQRCode" class="w-full" :disabled="isGenerating">
+                  <Loader2 v-if="isGenerating" class="mr-2 h-4 w-4 animate-spin" />
+                  {{ isGenerating ? 'Generating...' : 'Generate QR Code' }}
+                </Button>
+              </CardContent>
+            </Card>
+
+            <!-- QR Code Display -->
+            <Card v-if="qrCodeData" ref="qrCardRef">
+              <CardHeader>
+                <CardTitle>{{ isSharedView ? 'WiFi QR Code' : 'Your WiFi QR Code' }}</CardTitle>
+                <CardDescription>
+                  <span v-if="isSharedView">
+                    Scan this code with your phone to connect to <strong>{{ wifiCredentials.ssid }}</strong>
+                  </span>
+                  <span v-else>
+                    Scan this code to connect to <strong>{{ wifiCredentials.ssid }}</strong>
+                  </span>
+                </CardDescription>
+              </CardHeader>
+              <CardContent class="flex flex-col items-center space-y-4">
+                <div class="bg-white p-6 rounded-lg">
+                  <ClientOnly>
+                    <QrcodeVue
+                      :key="qrCodeData"
+                      :value="qrCodeData"
+                      :size="256"
+                      :level="'H'"
+                    />
+                    <template #fallback>
+                      <div class="w-64 h-64 flex items-center justify-center text-muted-foreground">
+                        Loading QR Code...
+                      </div>
+                    </template>
+                  </ClientOnly>
+                </div>
+
+                <div v-if="!isSharedView" class="flex gap-2 w-full">
+                  <div class="flex gap-2 flex-1">
+                    <Button @click="downloadQRCode('png')" variant="outline" class="flex-1">
+                      <Download class="mr-2 h-4 w-4" />
+                      PNG
+                    </Button>
+                    <Button @click="downloadQRCode('jpg')" variant="outline" class="flex-1">
+                      <Download class="mr-2 h-4 w-4" />
+                      JPG
+                    </Button>
+                  </div>
+                  <Button @click="copyShareLink" variant="outline" class="flex-1">
+                    <Share2 class="mr-2 h-4 w-4" />
+                    Share
+                  </Button>
+                </div>
+
+                <div v-if="isSharedView" class="flex gap-2 w-full">
+                  <Button @click="downloadQRCode('png')" variant="outline" class="flex-1">
+                    <Download class="mr-2 h-4 w-4" />
+                    PNG
+                  </Button>
+                  <Button @click="downloadQRCode('jpg')" variant="outline" class="flex-1">
+                    <Download class="mr-2 h-4 w-4" />
+                    JPG
+                  </Button>
+                </div>
+
+                <p v-if="linkCopied" class="text-sm text-muted-foreground">
+                  Link copied to clipboard!
+                </p>
+              </CardContent>
+            </Card>
+
+            <!-- Saved Networks -->
+            <Card v-if="!isSharedView && savedNetworks.length > 0">
+              <CardHeader>
+                <CardTitle>Saved Networks</CardTitle>
+                <CardDescription>
+                  Previously generated QR codes
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div class="space-y-2">
+                  <div
+                    v-for="(network, index) in savedNetworks"
+                    :key="index"
+                    :class="[
+                      'flex items-center justify-between p-3 rounded-lg border transition-colors cursor-pointer',
+                      isQRCodeExpired(network) ? 'opacity-60 border-destructive/50' : 'hover:bg-accent'
+                    ]"
+                    @click="loadNetwork(network)"
+                  >
+                    <div class="flex-1">
+                      <p class="font-medium">{{ network.ssid }}</p>
+                      <p class="text-sm text-muted-foreground">{{ network.encryption }}</p>
+                      <p v-if="network.expiresAt" class="text-xs mt-1" :class="isQRCodeExpired(network) ? 'text-destructive' : 'text-muted-foreground'">
+                        {{ isQRCodeExpired(network) ? 'Expired' : `Expires: ${new Date(network.expiresAt).toLocaleString()}` }}
+                      </p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      @click.stop="deleteNetwork(index)"
+                    >
+                      <Trash2 class="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+      </Tabs>
+    </main>
+  </div>
+</template>
+
+<script lang="ts" setup>
+import { ref, onMounted } from 'vue'
+import { useColorMode } from '@vueuse/core'
+import QrcodeVue from 'qrcode-vue3'
+import html2canvas from 'html2canvas'
+import {
+  Moon,
+  Sun,
+  Download,
+  Share2,
+  Trash2,
+  Eye,
+  EyeOff,
+  Loader2
+} from 'lucide-vue-next'
+import { Button } from '~/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/card'
+import { Input } from '~/components/ui/input'
+import { Label } from '~/components/ui/label'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
+
+// Theme management
+const colorMode = useColorMode({
+  storageKey: 'snapwifi-color-mode',
+  storage: typeof window !== 'undefined' ? localStorage : undefined,
+})
+const isDark = computed(() => colorMode.value === 'dark')
+
+const toggleTheme = () => {
+  colorMode.value = isDark.value ? 'light' : 'dark'
+}
+
+// Tab management
+const activeTab = ref('qr')
+
+// Password visibility
+const showPassword = ref(false)
+
+// Loading state
+const isGenerating = ref(false)
+
+// WiFi credentials
+interface WiFiCredentials {
+  ssid: string
+  password: string
+  encryption: 'WPA' | 'WEP' | 'nopass'
+}
+
+// Stored network with encrypted password and QR data
+interface StoredNetwork {
+  ssid: string
+  encryptedPassword: string
+  encryptedQRData: string
+  ivPassword: string // Initialization vector for password encryption
+  ivQRData: string // Initialization vector for QR data encryption
+  encryption: 'WPA' | 'WEP' | 'nopass'
+  expiresAt?: number // Timestamp when QR code expires (optional)
+}
+
+const wifiCredentials = ref<WiFiCredentials>({
+  ssid: '',
+  password: '',
+  encryption: 'WPA'
+})
+
+const qrCodeData = ref('')
+const linkCopied = ref(false)
+const savedNetworks = ref<StoredNetwork[]>([])
+const qrExpiryHours = ref(24) // Default 24 hours
+const isSharedView = ref(false) // Flag to indicate if viewing a shared QR code
+const qrCardRef = ref<HTMLElement | null>(null) // Reference to QR code card
+
+// Generate a key from the device/browser for encryption
+const getEncryptionKey = async (): Promise<CryptoKey> => {
+  // Use a combination of browser fingerprint data as key material
+  const keyMaterial = `snapwifi-${navigator.userAgent}-${window.screen.width}x${window.screen.height}`
+  const encoder = new TextEncoder()
+  const keyData = encoder.encode(keyMaterial)
+
+  // Derive a key from the material
+  const hashBuffer = await crypto.subtle.digest('SHA-256', keyData)
+
+  return crypto.subtle.importKey(
+    'raw',
+    hashBuffer,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  )
+}
+
+// Generic encrypt function for strings
+const encryptString = async (data: string): Promise<{ encrypted: string; iv: string }> => {
+  const key = await getEncryptionKey()
+  const encoder = new TextEncoder()
+  const encodedData = encoder.encode(data)
+
+  // Generate a random IV
+  const iv = crypto.getRandomValues(new Uint8Array(12))
+
+  const encryptedBuffer = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    key,
+    encodedData
+  )
+
+  // Convert to hex strings for storage
+  const encryptedArray = Array.from(new Uint8Array(encryptedBuffer))
+  const ivArray = Array.from(iv)
+
+  return {
+    encrypted: encryptedArray.map(b => b.toString(16).padStart(2, '0')).join(''),
+    iv: ivArray.map(b => b.toString(16).padStart(2, '0')).join('')
+  }
+}
+
+// Generic decrypt function for strings
+const decryptString = async (encryptedHex: string, ivHex: string): Promise<string> => {
+  const key = await getEncryptionKey()
+
+  // Convert hex strings back to arrays
+  const encryptedArray = new Uint8Array(encryptedHex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)))
+  const iv = new Uint8Array(ivHex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)))
+
+  const decryptedBuffer = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv },
+    key,
+    encryptedArray
+  )
+
+  const decoder = new TextDecoder()
+  return decoder.decode(decryptedBuffer)
+}
+
+// Generate QR code
+const generateQRCode = async () => {
+  const { ssid, password, encryption } = wifiCredentials.value
+
+  if (!ssid) {
+    alert('Please enter a network name (SSID)')
+    return
+  }
+
+  isGenerating.value = true
+
+  // Simulate a brief loading period for better UX
+  await new Promise(resolve => setTimeout(resolve, 500))
+
+  // WiFi QR code format: WIFI:T:WPA;S:mynetwork;P:mypassword;;
+  let qrString = `WIFI:T:${encryption};S:${ssid};`
+
+  if (encryption !== 'nopass' && password) {
+    qrString += `P:${password};`
+  }
+
+  qrString += ';'
+  qrCodeData.value = qrString
+
+  // Save to localStorage
+  saveNetwork(wifiCredentials.value)
+
+  isGenerating.value = false
+}
+
+// Save network to localStorage with encrypted password and QR data
+const saveNetwork = async (network: WiFiCredentials) => {
+  const networks: StoredNetwork[] = JSON.parse(localStorage.getItem('wifiNetworks') || '[]')
+
+  // Check if network already exists
+  const existingIndex = networks.findIndex((n: StoredNetwork) => n.ssid === network.ssid)
+
+  // Encrypt the password before storing
+  const passwordEncryption = await encryptString(network.password)
+
+  // Encrypt the QR data before storing
+  const qrDataEncryption = await encryptString(qrCodeData.value)
+
+  // Calculate expiry timestamp
+  const expiresAt = qrExpiryHours.value > 0
+    ? Date.now() + (qrExpiryHours.value * 60 * 60 * 1000)
+    : undefined
+
+  const storedNetwork: StoredNetwork = {
+    ssid: network.ssid,
+    encryptedPassword: passwordEncryption.encrypted,
+    encryptedQRData: qrDataEncryption.encrypted,
+    ivPassword: passwordEncryption.iv,
+    ivQRData: qrDataEncryption.iv,
+    encryption: network.encryption,
+    expiresAt
+  }
+
+  if (existingIndex !== -1) {
+    // Update existing network
+    networks[existingIndex] = storedNetwork
+  } else {
+    // Add new network to the beginning
+    networks.unshift(storedNetwork)
+  }
+
+  localStorage.setItem('wifiNetworks', JSON.stringify(networks))
+
+  // Update the display list
+  loadSavedNetworks()
+}
+
+// Load saved networks
+const loadSavedNetworks = () => {
+  const networks: StoredNetwork[] = JSON.parse(localStorage.getItem('wifiNetworks') || '[]')
+  savedNetworks.value = networks
+}
+
+// Check if QR code is expired
+const isQRCodeExpired = (network: StoredNetwork): boolean => {
+  if (!network.expiresAt) return false
+  return Date.now() > network.expiresAt
+}
+
+// Load a network and decrypt password and QR data
+const loadNetwork = async (network: StoredNetwork) => {
+  try {
+    // Check if QR code has expired
+    if (isQRCodeExpired(network)) {
+      alert(`QR code for "${network.ssid}" has expired. Please regenerate it.`)
+      // Still load the credentials to the form so user can regenerate
+      const decryptedPassword = await decryptString(network.encryptedPassword, network.ivPassword)
+      wifiCredentials.value = {
+        ssid: network.ssid,
+        password: decryptedPassword,
+        encryption: network.encryption
+      }
+      qrCodeData.value = '' // Clear QR code
+      return
+    }
+
+    // Decrypt password
+    const decryptedPassword = await decryptString(network.encryptedPassword, network.ivPassword)
+
+    // Update form with decrypted data first
+    wifiCredentials.value = {
+      ssid: network.ssid,
+      password: decryptedPassword,
+      encryption: network.encryption
+    }
+
+    // Check if encrypted QR data exists (for backward compatibility)
+    if (network.encryptedQRData && network.ivQRData) {
+      // Decrypt QR data from storage
+      const decryptedQRData = await decryptString(network.encryptedQRData, network.ivQRData)
+      qrCodeData.value = decryptedQRData
+    } else {
+      // Fallback: Generate QR code from decrypted password (for old saved networks)
+      const { ssid, password, encryption } = wifiCredentials.value
+      let qrString = `WIFI:T:${encryption};S:${ssid};`
+      if (encryption !== 'nopass' && password) {
+        qrString += `P:${password};`
+      }
+      qrString += ';'
+      qrCodeData.value = qrString
+
+      // Update the saved network with encrypted QR data for next time
+      await saveNetwork(wifiCredentials.value)
+    }
+  } catch (error) {
+    console.error('Failed to decrypt network data:', error)
+    alert('Failed to load network credentials')
+  }
+}
+
+// Delete a network
+const deleteNetwork = (index: number) => {
+  savedNetworks.value.splice(index, 1)
+  localStorage.setItem('wifiNetworks', JSON.stringify(savedNetworks.value))
+}
+
+// Download entire QR card as image
+const downloadQRCard = async (format: 'png' | 'jpg' = 'png') => {
+  try {
+    // Wait a bit for any transitions/renders to complete
+    await new Promise(resolve => setTimeout(resolve, 100))
+
+    // Get the actual DOM element (qrCardRef might be a component)
+    let element: any = qrCardRef.value
+    if (!element) {
+      alert('QR code card not found')
+      return
+    }
+
+    // If it's a Vue component, get the root element
+    if (element.$el) {
+      element = element.$el
+    }
+
+    // Check if element is a valid DOM node
+    if (!(element instanceof HTMLElement)) {
+      throw new Error('Invalid element type')
+    }
+
+    // Check if element is in the document
+    if (!document.body.contains(element)) {
+      throw new Error('Card element not found in document')
+    }
+
+    const canvas = await html2canvas(element, {
+      backgroundColor: '#ffffff',
+      scale: 2, // Higher quality
+      logging: false,
+      useCORS: true,
+      allowTaint: true,
+      windowWidth: element.scrollWidth,
+      windowHeight: element.scrollHeight,
+      onclone: (clonedDoc) => {
+        // Override all oklch colors with standard colors
+        const allElements = clonedDoc.querySelectorAll('*')
+        allElements.forEach((el) => {
+          if (el instanceof HTMLElement) {
+            const computedStyle = window.getComputedStyle(el)
+
+            // Replace background colors
+            if (computedStyle.backgroundColor && computedStyle.backgroundColor.includes('oklch')) {
+              el.style.backgroundColor = '#ffffff'
+            }
+
+            // Replace text colors
+            if (computedStyle.color && computedStyle.color.includes('oklch')) {
+              el.style.color = '#000000'
+            }
+
+            // Replace border colors
+            if (computedStyle.borderColor && computedStyle.borderColor.includes('oklch')) {
+              el.style.borderColor = '#e5e7eb'
+            }
+          }
+        })
+      }
+    })
+
+    const mimeType = format === 'jpg' ? 'image/jpeg' : 'image/png'
+    const dataUrl = canvas.toDataURL(mimeType, 0.95)
+    const link = document.createElement('a')
+    link.download = `wifi-card-${wifiCredentials.value.ssid || 'qrcode'}.${format}`
+    link.href = dataUrl
+    link.click()
+  } catch (error) {
+    console.error('Failed to download QR card:', error)
+    alert('Failed to download QR card. Please try again.')
+  }
+}
+
+// Download QR code only
+const downloadQRCode = (format: 'png' | 'jpg' = 'png') => {
+  try {
+    // Try to find canvas first
+    const canvas = document.querySelector('canvas')
+    if (canvas) {
+      const mimeType = format === 'jpg' ? 'image/jpeg' : 'image/png'
+      const url = canvas.toDataURL(mimeType, 0.95)
+      const link = document.createElement('a')
+      link.download = `wifi-${wifiCredentials.value.ssid || 'qrcode'}.${format}`
+      link.href = url
+      link.click()
+      return
+    }
+
+    // If no canvas, try SVG
+    const svg = document.querySelector('svg')
+    if (svg) {
+      // Convert SVG to canvas
+      const svgData = new XMLSerializer().serializeToString(svg)
+      const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' })
+      const url = URL.createObjectURL(svgBlob)
+
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        canvas.width = 256
+        canvas.height = 256
+        const ctx = canvas.getContext('2d')
+        if (ctx) {
+          ctx.fillStyle = 'white'
+          ctx.fillRect(0, 0, 256, 256)
+          ctx.drawImage(img, 0, 0, 256, 256)
+
+          const mimeType = format === 'jpg' ? 'image/jpeg' : 'image/png'
+          const dataUrl = canvas.toDataURL(mimeType, 0.95)
+          const link = document.createElement('a')
+          link.download = `wifi-${wifiCredentials.value.ssid || 'qrcode'}.${format}`
+          link.href = dataUrl
+          link.click()
+          URL.revokeObjectURL(url)
+        }
+      }
+      img.src = url
+      return
+    }
+
+    alert('Could not find QR code to download')
+  } catch (error) {
+    console.error('Failed to download QR code:', error)
+    alert('Failed to download QR code')
+  }
+}
+
+// Copy share link (QR code only, no password exposed)
+const copyShareLink = () => {
+  const shareData = btoa(qrCodeData.value)
+  const shareUrl = `${window.location.origin}?qr=${shareData}` // Changed from 'wifi' to 'qr'
+
+  navigator.clipboard.writeText(shareUrl).then(() => {
+    linkCopied.value = true
+    setTimeout(() => {
+      linkCopied.value = false
+    }, 3000)
+  })
+}
+
+
+// Load saved networks on mount
+onMounted(() => {
+  loadSavedNetworks()
+
+  // Check for shared QR code in URL
+  const urlParams = new URLSearchParams(window.location.search)
+  const sharedQR = urlParams.get('qr')
+  const sharedWifi = urlParams.get('wifi') // Keep for backward compatibility
+
+  if (sharedQR) {
+    // New format: Only show QR code, hide credentials
+    try {
+      qrCodeData.value = atob(sharedQR)
+      isSharedView.value = true
+
+      // Parse WiFi string to get only SSID for display (not password)
+      const matches = qrCodeData.value.match(/WIFI:T:(\w+);S:([^;]+);/)
+      if (matches) {
+        wifiCredentials.value = {
+          encryption: matches[1] as any,
+          ssid: matches[2] || '',
+          password: '' // Don't expose password
+        }
+      }
+    } catch (error) {
+      console.error('Failed to parse shared QR code:', error)
+    }
+  } else if (sharedWifi) {
+    // Old format: Show QR code and populate form (backward compatibility)
+    try {
+      qrCodeData.value = atob(sharedWifi)
+      // Parse WiFi string to populate form
+      const matches = qrCodeData.value.match(/WIFI:T:(\w+);S:([^;]+);P:([^;]*);/)
+      if (matches) {
+        wifiCredentials.value = {
+          encryption: matches[1] as any,
+          ssid: matches[2] || '',
+          password: matches[3] || ''
+        }
+      }
+    } catch (error) {
+      console.error('Failed to parse shared WiFi:', error)
+    }
+  }
+})
+</script>
