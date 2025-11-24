@@ -1,7 +1,7 @@
 import CryptoJS from 'crypto-js'
 
 // Use environment variable or fallback to default key
-const ENCRYPTION_KEY = import.meta.env.VITE_CRYPTO_SECRET_KEY || 'snapwifi-secure-key-2025'
+const ENCRYPTION_KEY = import.meta.env.VITE_CRYPTO_SECRET_KEY;
 
 export const encryptData = (data: string): { encrypted: string; iv: string } => {
   const iv = CryptoJS.lib.WordArray.random(16).toString()
