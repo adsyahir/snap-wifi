@@ -327,7 +327,6 @@ const generateQRCode = () => {
       return
     }
 
-    console.log('Generating QR code for:', form.value)
 
     // Generate WiFi string
     const wifiString = generateWifiString(form.value.ssid, form.value.password, form.value.encryption)
